@@ -1,25 +1,18 @@
 const axios = require('axios')
 const R = require('ramda')
-const { MongoClient } = require('mongodb')
+const winston = require('winston')
+const { makeUrl } = require('./helpers')
 
-const addresses = [
-  '1DeZBwwgxgeYH3ttEHGxQ2JW6KSeV4UvdK',
-  '1MdvCCWicgid1tmdjw9HrfkT3es3pL4TU6',
-  '13cVZhAXNx5k5uUzKL9BH6NjwMTWkKbXmu'
-]
+const addSelectedAddresses = async (addrHashes, collection) => {
+	try {
+		const response = await axios.get(makeUrl(addrHashes))
+		const addressesFromResponse = R.path(['data', 'addresses'], response)
+		const added = await collection.insertMany(addressesFromResponse)
+		winston.info('Addresses saved to DB:', R.prop('insertedCount', added))
+	}
+	catch (error) {
+		winston.error('Failed to add addresses to DB:', R.prop('message', error))
+	}
+}
 
-const makeUrl = addrs =>
-  `https://blockchain.info/ru/multiaddr?active=${R.join('|', addrs)}`
-
-MongoClient.connect('mongodb://localhost:27017/applicature')
-  .then(db => axios.get(makeUrl(addresses))
-    .then(R.path(['data', 'addresses']))
-    .then(addrs => db.collection('addresses')
-      // create index to avoid duplicates
-      .createIndex({ address: 1 }, { unique: true })
-        .then(db.collection('addresses').insertMany(addrs)
-          .then(r => db.close()
-            .then(console.log('Addresses saved to DB:', R.prop('insertedCount', r))))
-          .catch(e => db.close()
-            .then(console.log('Failed to add addresses to DB:', R.prop('message', e)))))))
-  .catch(e => console.log('Error:', e))
+module.exports = addSelectedAddresses
